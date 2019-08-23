@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 )
 
 //######################################################################################################################
@@ -34,7 +35,13 @@ type Etfs_ftable_file struct {
 }
 
 func (e Etfs_ftable_file) String() string {
-	return fmt.Sprintf("efid:%d - pfid:%d - %s\n", e.Efid, e.Pfid, e.Name)
+	name := string(e.Name[:])
+	zero := bytes.Index(e.Name[:], []byte{0})
+	var filename string
+	if zero >= 0 {
+		filename = name[0:zero]
+	}
+	return fmt.Sprintf("efid:%d - pfid:%d - amctime: %d %d %d - %s", e.Efid, e.Pfid, e.Atime, e.Mtime, e.Ctime, filename)
 }
 
 func main() {
@@ -44,7 +51,7 @@ func main() {
 		os.Exit(42)
 	}
 
-	fileName := os.Args[1]
+	fileName, _ := filepath.Abs(os.Args[1])
 	fmt.Printf("Processing filetable %s\n", fileName)
 
 	dat, err := ioutil.ReadFile(fileName)
@@ -55,21 +62,20 @@ func main() {
 
 	fmt.Printf("Filesize: %d\n", len(dat))
 
-	var offset int = 0
+	var offset int
 	var entry Etfs_ftable_file
 	const size = 64
-	var cnt int = 0
+	var cnt int
 	for ok := true; ok; ok = offset+size < len(dat) {
-		cnt++
 		b := bytes.NewBuffer(dat[offset : offset+size])
 		err = binary.Read(b, binary.LittleEndian, &entry)
 		if err != nil {
 			fmt.Printf("Read error %s\n", err.Error())
 			os.Exit(42)
 		}
-		fmt.Printf("Offset: %d - %+v\n", offset, entry)
+		fmt.Printf("Cnt: %d - Offset: %d - %+v\n", cnt, offset, entry)
 		offset += size
-		fmt.Printf("Size: %d - Offset: %d\n", size, offset)
+		cnt++
 	}
 	fmt.Printf("Entries found: %d\n", cnt)
 }
