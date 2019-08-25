@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,6 +23,8 @@ import (
 const ETFS_FNAME_SHORT_LEN = 32
 
 const ETFS_FILE_END = -1 // pfid for last dummy entry in filetable
+
+const CLUSTER_SIZE = 2048
 
 type Etfs_ftable_file struct {
 	Efid  int16 /* File id of extra info attached to this file */
@@ -74,32 +75,60 @@ func ParseFiletable(fileName string) ([]Etfs_ftable_file, error) {
 		fmt.Printf("Processing dump %s\n", fileName)
 	}
 
-	dat, err := ioutil.ReadFile(fileName)
+	f, err := os.Open(fileName)
 	if err != nil {
 		return nil, err
 	}
 
-	fmt.Printf("Filesize: %d\n", len(dat))
+	bf := make([]byte, CLUSTER_SIZE)
+	bd := make([]byte, 16)
 
-	var offset int
+	var globalOffset int
 	var entry Etfs_ftable_file
 	etfs = make([]Etfs_ftable_file, 0, 500)
 	const size = 64
 	var cnt int
-	for ok := true; ok; ok = offset+size < len(dat) {
-		b := bytes.NewBuffer(dat[offset : offset+size])
-		err = binary.Read(b, binary.LittleEndian, &entry)
+
+readLoop:
+	for {
+		l, err := f.Read(bf)
+		if l == 0 {
+			break readLoop
+		}
 		if err != nil {
 			return nil, err
 		}
-		if entry.Pfid == ETFS_FILE_END {
-			break
+		var offset int
+		for ok := true; ok; ok = offset+size <= CLUSTER_SIZE {
+			b := bytes.NewBuffer(bf[offset : offset+size])
+			err = binary.Read(b, binary.LittleEndian, &entry)
+			if err != nil {
+				return nil, err
+			}
+
+			if entry.Pfid == ETFS_FILE_END {
+				break readLoop
+			}
+			//fmt.Printf("Buffer: %x\n", bf[offset:offset+size])
+			fmt.Printf("Cnt: %d - AbsOffset: %x - RelOffset: %x - %+v\n", cnt, globalOffset, offset, entry)
+			etfs = append(etfs, entry)
+			offset += size
+			globalOffset += size
+			cnt++
 		}
-		fmt.Printf("Buffer: %x\n", dat[offset:offset+size])
-		fmt.Printf("Cnt: %d - Offset: %d - %+v\n", cnt, offset, entry)
-		etfs = append(etfs, entry)
-		offset += size
-		cnt++
+
+		fmt.Printf("Reading cluster\n")
+
+		if dump {
+			l, err = f.Read(bd)
+			if l == 0 {
+				break readLoop
+			}
+			if err != nil {
+				return nil, err
+			}
+			globalOffset += 16
+		}
 	}
 
 	fmt.Printf("Entries found: %d\n", cnt)
