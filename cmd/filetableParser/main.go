@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -62,8 +63,16 @@ func (e Etfs_ftable_file) Status() string {
 	return deleted
 }
 
+// ParseFiletable -
 func ParseFiletable(fileName string) ([]Etfs_ftable_file, error) {
-	fmt.Printf("Processing filetable %s\n", fileName)
+
+	dump := strings.HasSuffix(fileName, ".img")
+
+	if !dump {
+		fmt.Printf("Processing filetable %s\n", fileName)
+	} else {
+		fmt.Printf("Processing dump %s\n", fileName)
+	}
 
 	dat, err := ioutil.ReadFile(fileName)
 	if err != nil {
@@ -81,17 +90,18 @@ func ParseFiletable(fileName string) ([]Etfs_ftable_file, error) {
 		b := bytes.NewBuffer(dat[offset : offset+size])
 		err = binary.Read(b, binary.LittleEndian, &entry)
 		if err != nil {
-			fmt.Printf("Read error %s\n", err.Error())
-			os.Exit(42)
+			return nil, err
 		}
 		if entry.Pfid == ETFS_FILE_END {
 			break
 		}
+		fmt.Printf("Buffer: %x\n", dat[offset:offset+size])
 		fmt.Printf("Cnt: %d - Offset: %d - %+v\n", cnt, offset, entry)
 		etfs = append(etfs, entry)
 		offset += size
 		cnt++
 	}
+
 	fmt.Printf("Entries found: %d\n", cnt)
 	return etfs, nil
 }
@@ -109,6 +119,8 @@ func main() {
 	if err != nil {
 		fmt.Printf("Error reading %s: %s\n", fileName, err)
 	}
+
+	os.Exit(0)
 
 	for i := range etfs {
 		c := etfs[i]
