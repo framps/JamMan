@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 //######################################################################################################################
@@ -21,6 +22,8 @@ import (
 
 const ETFS_FNAME_SHORT_LEN = 32
 
+const ETFS_FILE_END = -1 // pfid for last dummy entry in filetable
+
 type Etfs_ftable_file struct {
 	Efid  int16 /* File id of extra info attached to this file */
 	Pfid  int16 /* File id of parent to this file */
@@ -34,14 +37,63 @@ type Etfs_ftable_file struct {
 	Name  [ETFS_FNAME_SHORT_LEN]byte
 }
 
+var etfs []Etfs_ftable_file
+
 func (e Etfs_ftable_file) String() string {
+	atime := time.Unix((int64)(e.Atime), 0).Format(time.RFC3339)
+	return fmt.Sprintf("%s # efid:%d - pfid:%d - amctime: %s %d %d - %s", e.Status(), e.Efid, e.Pfid, atime, e.Mtime, e.Ctime, e.Filename())
+}
+
+func (e Etfs_ftable_file) Filename() string {
 	name := string(e.Name[:])
 	zero := bytes.Index(e.Name[:], []byte{0})
 	var filename string
 	if zero >= 0 {
 		filename = name[0:zero]
 	}
-	return fmt.Sprintf("efid:%d - pfid:%d - amctime: %d %d %d - %s", e.Efid, e.Pfid, e.Atime, e.Mtime, e.Ctime, filename)
+	return filename
+}
+
+func (e Etfs_ftable_file) Status() string {
+	deleted := "       "
+	if e.Efid == -1 {
+		deleted = "DELETED"
+	}
+	return deleted
+}
+
+func ParseFiletable(fileName string) ([]Etfs_ftable_file, error) {
+	fmt.Printf("Processing filetable %s\n", fileName)
+
+	dat, err := ioutil.ReadFile(fileName)
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Printf("Filesize: %d\n", len(dat))
+
+	var offset int
+	var entry Etfs_ftable_file
+	etfs = make([]Etfs_ftable_file, 0, 500)
+	const size = 64
+	var cnt int
+	for ok := true; ok; ok = offset+size < len(dat) {
+		b := bytes.NewBuffer(dat[offset : offset+size])
+		err = binary.Read(b, binary.LittleEndian, &entry)
+		if err != nil {
+			fmt.Printf("Read error %s\n", err.Error())
+			os.Exit(42)
+		}
+		if entry.Pfid == ETFS_FILE_END {
+			break
+		}
+		fmt.Printf("Cnt: %d - Offset: %d - %+v\n", cnt, offset, entry)
+		etfs = append(etfs, entry)
+		offset += size
+		cnt++
+	}
+	fmt.Printf("Entries found: %d\n", cnt)
+	return etfs, nil
 }
 
 func main() {
@@ -52,30 +104,22 @@ func main() {
 	}
 
 	fileName, _ := filepath.Abs(os.Args[1])
-	fmt.Printf("Processing filetable %s\n", fileName)
 
-	dat, err := ioutil.ReadFile(fileName)
+	etfs, err := ParseFiletable(fileName)
 	if err != nil {
-		fmt.Printf("Read error %s\n", err.Error())
-		os.Exit(42)
+		fmt.Printf("Error reading %s: %s\n", fileName, err)
 	}
 
-	fmt.Printf("Filesize: %d\n", len(dat))
-
-	var offset int
-	var entry Etfs_ftable_file
-	const size = 64
-	var cnt int
-	for ok := true; ok; ok = offset+size < len(dat) {
-		b := bytes.NewBuffer(dat[offset : offset+size])
-		err = binary.Read(b, binary.LittleEndian, &entry)
-		if err != nil {
-			fmt.Printf("Read error %s\n", err.Error())
-			os.Exit(42)
+	for i := range etfs {
+		c := etfs[i]
+		name := c.Filename()
+		for {
+			if c.Pfid == 0 {
+				break
+			}
+			c = etfs[c.Pfid]
+			name = c.Filename() + "/" + name
 		}
-		fmt.Printf("Cnt: %d - Offset: %d - %+v\n", cnt, offset, entry)
-		offset += size
-		cnt++
+		fmt.Printf("%03d: %s %s\n", i, etfs[i].Status(), name)
 	}
-	fmt.Printf("Entries found: %d\n", cnt)
 }
