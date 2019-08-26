@@ -26,6 +26,8 @@ const ETFS_FILE_END = -1 // pfid for last dummy entry in filetable
 
 const CLUSTER_SIZE = 2048
 
+const EMPTY_CLUSTER = 0x00ffffff
+
 type Etfs_ftable_file struct {
 	Efid  int16 /* File id of extra info attached to this file */
 	Pfid  int16 /* File id of parent to this file */
@@ -38,8 +40,6 @@ type Etfs_ftable_file struct {
 	Size  int32 /* File size (always 0 for directories) */
 	Name  [ETFS_FNAME_SHORT_LEN]byte
 }
-
-var etfs []Etfs_ftable_file
 
 func (e Etfs_ftable_file) String() string {
 	atime := time.Unix((int64)(e.Atime), 0).Format(time.RFC3339)
@@ -64,8 +64,23 @@ func (e Etfs_ftable_file) Status() string {
 	return deleted
 }
 
+var etfs []Etfs_ftable_file
+
+type Etfs_cluster_separator struct {
+	ClusterNumber uint32
+	BlockNumber   uint32
+	BlocksLeft    uint32
+	Misc          uint32
+}
+
+func (e Etfs_cluster_separator) String() string {
+	return fmt.Sprintf("%08x - %08d - %08d - %d", e.ClusterNumber, e.BlockNumber, e.BlocksLeft, e.Misc)
+}
+
 // ParseFiletable -
 func ParseFiletable(fileName string) ([]Etfs_ftable_file, error) {
+
+	var validClusters = 0
 
 	dump := strings.HasSuffix(fileName, ".img")
 
@@ -106,32 +121,49 @@ readLoop:
 				return nil, err
 			}
 
-			if entry.Pfid == ETFS_FILE_END {
-				break readLoop
-			}
+			/*
+				if entry.Pfid == ETFS_FILE_END {
+					break readLoop
+				}
+			*/
 			//fmt.Printf("Buffer: %x\n", bf[offset:offset+size])
-			fmt.Printf("Cnt: %d - AbsOffset: %x - RelOffset: %x - %+v\n", cnt, globalOffset, offset, entry)
-			etfs = append(etfs, entry)
+			//			fmt.Printf("Cnt: %d - AbsOffset: %x - RelOffset: %x - %+v\n", cnt, globalOffset, offset, entry)
+			//etfs = append(etfs, entry)
 			offset += size
 			globalOffset += size
 			cnt++
 		}
 
-		fmt.Printf("Reading cluster\n")
+		//fmt.Printf("Reading cluster\n")
 
 		if dump {
 			l, err = f.Read(bd)
+			if err != nil {
+				return nil, err
+			}
 			if l == 0 {
 				break readLoop
 			}
+			b := bytes.NewBuffer(bd)
+			var filler Etfs_cluster_separator
+			err = binary.Read(b, binary.LittleEndian, &filler)
 			if err != nil {
 				return nil, err
+			}
+			if filler.BlockNumber != EMPTY_CLUSTER {
+				//fmt.Printf("Clusterfill: %06x - %x\n", globalOffset, bd)
+				fmt.Printf("Clusterfill: %06x - %s\n", globalOffset, filler)
+				validClusters++
 			}
 			globalOffset += 16
 		}
 	}
 
-	fmt.Printf("Entries found: %d\n", cnt)
+	if dump {
+		fmt.Printf("Valid clusters: %d\n", validClusters)
+	} else {
+		fmt.Printf("Entries found: %d\n", cnt)
+	}
 	return etfs, nil
 }
 
