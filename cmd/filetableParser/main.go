@@ -104,6 +104,8 @@ func ParseFiletable(fileName string) ([]Etfs_ftable_file, error) {
 	const size = 64
 	var cnt int
 
+	var leadingFileTableProsessing = true
+
 readLoop:
 	for {
 		l, err := f.Read(bf)
@@ -115,23 +117,25 @@ readLoop:
 		}
 		var offset int
 		for ok := true; ok; ok = offset+size <= CLUSTER_SIZE {
-			b := bytes.NewBuffer(bf[offset : offset+size])
-			err = binary.Read(b, binary.LittleEndian, &entry)
-			if err != nil {
-				return nil, err
-			}
-
-			/*
-				if entry.Pfid == ETFS_FILE_END {
-					break readLoop
+			// process leading filetable
+			if leadingFileTableProsessing {
+				b := bytes.NewBuffer(bf[offset : offset+size])
+				err = binary.Read(b, binary.LittleEndian, &entry)
+				if err != nil {
+					return nil, err
 				}
-			*/
-			//fmt.Printf("Buffer: %x\n", bf[offset:offset+size])
-			//			fmt.Printf("Cnt: %d - AbsOffset: %x - RelOffset: %x - %+v\n", cnt, globalOffset, offset, entry)
-			//etfs = append(etfs, entry)
+
+				if entry.Pfid == ETFS_FILE_END {
+					leadingFileTableProsessing = false
+				} else {
+					//fmt.Printf("Buffer: %x\n", bf[offset:offset+size])
+					fmt.Printf("Cnt: %04d - AbsOffset: %08x - RelOffset: %08x - %+v\n", cnt, globalOffset, offset, entry)
+					etfs = append(etfs, entry)
+					cnt++
+				}
+			}
 			offset += size
 			globalOffset += size
-			cnt++
 		}
 
 		//fmt.Printf("Reading cluster\n")
@@ -152,7 +156,7 @@ readLoop:
 			}
 			if filler.BlockNumber != EMPTY_CLUSTER {
 				//fmt.Printf("Clusterfill: %06x - %x\n", globalOffset, bd)
-				fmt.Printf("Clusterfill: %06x - %s\n", globalOffset, filler)
+				fmt.Printf("Clusterfill: %08x - %s\n", globalOffset, filler)
 				validClusters++
 			}
 			globalOffset += 16
@@ -180,8 +184,6 @@ func main() {
 	if err != nil {
 		fmt.Printf("Error reading %s: %s\n", fileName, err)
 	}
-
-	os.Exit(0)
 
 	for i := range etfs {
 		c := etfs[i]
