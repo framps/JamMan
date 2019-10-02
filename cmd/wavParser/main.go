@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"regexp"
+	"unsafe"
 )
 
 //######################################################################################################################
@@ -21,8 +22,12 @@ import (
 
 type WAVHeader struct {
 	Riff   [4]byte // "RIFF"
-	Length int32
+	Length int32   // filesize - 8 in bytes
 	Wave   [4]byte // "WAVE"
+}
+
+func (e WAVHeader) String() string {
+	return fmt.Sprintf("WAV: %s - L:%d - %s", e.Riff, e.Length+8, e.Wave)
 }
 
 type FMTHeader struct {
@@ -37,7 +42,7 @@ type FMTHeader struct {
 }
 
 func (e FMTHeader) String() string {
-	return fmt.Sprintf("%s - L:%d Tag:%d - Channels:%d Samplerate: %d BytesPerSecond:%d FrameSize:%d BitsPerSample:%d",
+	return fmt.Sprintf("FMT: %s - L:%d Tag:%d - Channels:%d Samplerate: %d BytesPerSecond:%d FrameSize:%d BitsPerSample:%d",
 		string(e.ID[:]), e.EchunkSize, e.EwFormatTag, e.EwChannels, e.EdwSamplesPerSec, e.EdwAvgBytesPerSec, e.EwBlockAlign, e.EwBitsPerSample)
 }
 
@@ -47,8 +52,21 @@ type DataChunk struct {
 	//waveformData []byte
 }
 
+type Wave struct {
+	Wh WAVHeader
+	Fh FMTHeader
+	Dc DataChunk
+}
+
 func (e DataChunk) String() string {
-	return fmt.Sprintf("%s - Size:%d", string(e.EchunkID[:]), e.EchunkSize)
+	return fmt.Sprintf("CHUNK: %s - Size:%d", string(e.EchunkID[:]), e.EchunkSize)
+}
+
+func HandleError(err error) {
+	if err != nil {
+		fmt.Printf("Open error %s\n", err.Error())
+		os.Exit(42)
+	}
 }
 
 func main() {
@@ -69,57 +87,61 @@ func main() {
 
 	fmt.Printf("Size: %d\n", len(dat))
 	re := regexp.MustCompile(`RIFF....WAVE`)
-	hits := re.FindAllSubmatchIndex(dat, -1)
+	hits := re.FindAllIndex(dat, -1)
 	var skipped, valid int
 
+	rf, err := os.Open(fileName)
+	if err != nil {
+		fmt.Printf("Open error %s\n", err.Error())
+		os.Exit(42)
+	}
+	defer rf.Close()
+
 	for i, h := range hits {
-		header := WAVHeader{}
+		wave := Wave{}
 		offset := h[0]
-		b := bytes.NewBuffer(dat[offset : offset+12])
-		err = binary.Read(b, binary.LittleEndian, &header)
+		b := bytes.NewBuffer(dat[offset : offset+int(unsafe.Sizeof(wave))])
+		err = binary.Read(b, binary.LittleEndian, &wave)
 		if err != nil {
 			fmt.Printf("Read error %s\n", err.Error())
 			os.Exit(42)
 		}
 
-		var fmtHeader FMTHeader
-		b = bytes.NewBuffer(dat[offset+12 : offset+12+24])
-		err = binary.Read(b, binary.LittleEndian, &fmtHeader)
-		if err != nil {
-			fmt.Printf("Read error %s\n", err.Error())
-			os.Exit(42)
-		}
-
-		var datHeader DataChunk
-		b = bytes.NewBuffer(dat[offset+12+24 : offset+12+24+8])
-		err = binary.Read(b, binary.LittleEndian, &datHeader)
-		if err != nil {
-			fmt.Printf("Read error %s\n", err.Error())
-			os.Exit(42)
-		}
-
-		s := header.Length + 8
+		s := wave.Wh.Length + 8
 
 		fn := fmt.Sprintf("Loop%02d.wav", i)
 		pre := "Creating "
-		if (fmtHeader.EchunkSize == 16 || fmtHeader.EchunkSize == 18) &&
-			fmtHeader.EwBlockAlign > 2 && // skip sample metronom wavs
-			datHeader.EchunkSize != 0 && // skip empty data sections
+		if (wave.Fh.EchunkSize == 16 || wave.Fh.EchunkSize == 18) &&
+			wave.Fh.EwBlockAlign > 2 && // skip sample metronom wavs
+			wave.Dc.EchunkSize != 0 && // skip empty data sections
 			(int32)(h[0])+s < (int32)(len(dat)) {
 
-			bw := bytes.NewBuffer(dat[h[0] : (int32)(h[0])+s])
-			err := ioutil.WriteFile(fn, bw.Bytes(), 0644)
-			if err != nil {
-				fmt.Printf("Write error %s\n", err.Error())
-				os.Exit(42)
-			}
+			fmt.Printf("%s %s\n", pre, wave.Wh)
+			fmt.Printf("%s %s\n", pre, wave.Fh)
+			fmt.Printf("%s %s\n", pre, wave.Dc)
+
+			wf, err := os.Create(fn)
+			HandleError(err)
+			defer wf.Close()
+
+			n, err := rf.Seek((int64)(h[0]), 0)
+			HandleError(err)
+			fmt.Printf("Seeked to %08x\n", n)
+			b := make([]byte, s)
+			_, err = rf.Read(b)
+			HandleError(err)
+
+			_, err = wf.Write(b)
+			HandleError(err)
+
 			fmt.Printf("%sFile: %s - Size: %d - Offset %08x\n", pre, fn, s, h[0])
-			fmt.Printf("%s\n", fmtHeader)
-			fmt.Printf("%s\n", datHeader)
 			valid++
 		} else {
 			pre = "Skipped "
 			skipped++
+			fmt.Printf("%s %s\n", pre, wave.Wh)
+			fmt.Printf("%s %s\n", pre, wave.Fh)
+			fmt.Printf("%s %s\n", pre, wave.Dc)
 		}
 	}
 	fmt.Printf("Hits: %d\n", len(hits))
