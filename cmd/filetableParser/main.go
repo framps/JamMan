@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 )
 
 //######################################################################################################################
@@ -42,8 +41,10 @@ type Etfs_ftable_file struct {
 }
 
 func (e Etfs_ftable_file) String() string {
-	atime := time.Unix((int64)(e.Atime), 0).Format(time.RFC3339)
-	return fmt.Sprintf("%s # efid:%d - pfid:%d - amctime: %s %d %d - %s", e.Status(), e.Efid, e.Pfid, atime, e.Mtime, e.Ctime, e.Filename())
+	//atime := time.Unix((int64)(e.Atime), 0).Format(time.RFC3339)
+	//mtime := time.Unix((int64)(e.Mtime), 0).Format(time.RFC3339)
+	//ctime := time.Unix((int64)(e.Ctime), 0).Format(time.RFC3339)
+	return fmt.Sprintf("%s # efid:%d - pfid:%d - times: %08x %08x %08x - %s:%d", e.Status(), e.Efid, e.Pfid, e.Atime, e.Mtime, e.Ctime, e.Filename(), e.Size)
 }
 
 func (e Etfs_ftable_file) Filename() string {
@@ -74,7 +75,7 @@ type Etfs_cluster_separator struct {
 }
 
 func (e Etfs_cluster_separator) String() string {
-	return fmt.Sprintf("%08x - %08d - %08d - %d", e.ClusterNumber, e.BlockNumber, e.BlocksLeft, e.Misc)
+	return fmt.Sprintf("ClusterNumber:%08d - Blocknumber:%08d - Blocksleft:%08d - Misc:%d", e.ClusterNumber, e.BlockNumber, e.BlocksLeft, e.Misc)
 }
 
 // ParseFiletable -
@@ -108,6 +109,7 @@ func ParseFiletable(fileName string) ([]Etfs_ftable_file, error) {
 
 readLoop:
 	for {
+		fmt.Printf("Reading cluster %d...\n", cnt)
 		l, err := f.Read(bf)
 		if l == 0 {
 			break readLoop
@@ -129,7 +131,7 @@ readLoop:
 					leadingFileTableProsessing = false
 				} else {
 					//fmt.Printf("Buffer: %x\n", bf[offset:offset+size])
-					fmt.Printf("Cnt: %04d - AbsOffset: %08x - RelOffset: %08x - %+v\n", cnt, globalOffset, offset, entry)
+					fmt.Printf("Cnt: %04d - AbsOffset: %08x - RelOffset: %08x - %s\n", cnt, globalOffset, offset, entry)
 					etfs = append(etfs, entry)
 					cnt++
 				}
