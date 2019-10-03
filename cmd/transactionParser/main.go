@@ -22,6 +22,18 @@ const DATA_SIZE = 0x800
 const TRANS_SIZE = 16
 const CLUSTER_SIZE = DATA_SIZE + TRANS_SIZE
 
+const ETFS_TRANS_OK = 0      /* A valid transaction */
+const ETFS_TRANS_ECC = 1     /* A valid transaction which was corrected by the ECC */
+const ETFS_TRANS_ERASED = 2  /* An erased block with an erase stamp */
+const ETFS_TRANS_FOXES = 3   /* An erased block */
+const ETFS_TRANS_DATAERR = 5 /* crc error (ECC could not correct) */
+const ETFS_TRANS_DEVERR = 6  /* Device retuned a hardware error */
+const ETFS_TRANS_BADBLK = 7  /* Bad blk marked at the factory (NAND flash only) */
+const ETFS_TRANS_MASK = 0x0f /* Mask for above status */
+
+const UNUSED_CLUSTER = 0xffffff
+const UNUSED_FID = 0xffff
+
 type Etfs_trans struct {
 	Fid       uint32 /* File id */
 	Cluster   uint32 /* Cluster offset in file */
@@ -80,7 +92,9 @@ readLoop:
 			return err
 		}
 
-		fmt.Printf("Cnt: %04d - Offset: %08x - Trans: %s\n", cnt, offset, cluster.Trans)
+		if cluster.Trans.Fid != UNUSED_FID {
+			fmt.Printf("Cnt: %04d - Offset: %08x - Trans: %s\n", cnt, offset, cluster.Trans)
+		}
 		cnt++
 		offset += CLUSTER_SIZE
 	}
