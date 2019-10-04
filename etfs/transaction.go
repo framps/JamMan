@@ -87,13 +87,13 @@ func HandleError(err error) {
 }
 
 // ParseFiletable -
-func ParseTransactions(fileName string) error {
+func ParseTransactions(fileName string) (Etfs_transtable, error) {
 
 	fmt.Printf("Processing transactions %s\n", fileName)
 
 	f, err := os.Open(fileName)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	var transTable Etfs_transtable
@@ -111,26 +111,26 @@ readLoop:
 			break readLoop
 		}
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		var cluster Etfs
 		b := bytes.NewBuffer(bc)
 		err = binary.Read(b, binary.LittleEndian, &cluster)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		if cluster.Trans.Fid != UNUSED_FID {
 			transCluster := Etfs_cluster{offset, cluster.Trans}
-			fmt.Printf("Cnt: %04d - Offset: %08x - Trans: %s\n", cnt, offset, cluster.Trans)
+			fmt.Printf("# %06d - Offset: %08x - Trans: %s\n", cnt, offset, cluster.Trans)
 			transTable = append(transTable, transCluster)
 		}
 		cnt++
 		offset += CLUSTER_SIZE
 	}
 
-	fmt.Printf("Transactions: %d\n", cnt)
+	fmt.Printf("Transactions found: %d\n", cnt)
 
 	d := make([]Etfs_data, 0, 10*2048)
 
@@ -145,22 +145,22 @@ readLoop:
 			fmt.Printf("Offset: %08x Trans: %s\n", transTable[i].Offset, transTable[i].Trans)
 			l, err := f.Seek((int64)(transTable[i].Offset), 0)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			if l != (int64)(transTable[i].Offset) {
-				return fmt.Errorf("Invalid offset. Expected %08x and git %08x", transTable[i].Offset, l)
+				return nil, fmt.Errorf("Invalid offset. Expected %08x and git %08x", transTable[i].Offset, l)
 			}
 
 			_, err = f.Read(bc)
 			if err != nil {
-				return err
+				return nil, err
 			}
 
 			var cluster Etfs
 			b := bytes.NewBuffer(bc)
 			err = binary.Read(b, binary.LittleEndian, &cluster)
 			if err != nil {
-				return err
+				return nil, err
 			}
 
 			d = append(d, cluster.Data)
@@ -168,16 +168,5 @@ readLoop:
 
 	}
 
-	fn := fmt.Sprintf("%d.file", 1)
-	wf, err := os.Create(fn)
-	HandleError(err)
-	defer wf.Close()
-
-	for i := range d {
-		fmt.Printf("%v", d[i].Binary)
-		_, err = wf.Write(d[i].Binary[:])
-		HandleError(err)
-	}
-	fmt.Printf("\n")
-	return nil
+	return transTable, nil
 }

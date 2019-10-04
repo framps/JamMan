@@ -84,6 +84,6 @@ func ParseFiletable(fileName string) ([]Etfs_ftable_file, error) {
 		}
 	}
 
-	fmt.Printf("Entries found: Defined:%d - Deleted:%d\n", defined, deleted)
+	fmt.Printf("Filetable entries found: Defined:%d - Deleted:%d\n", defined, deleted)
 	return filetable, nil
 }

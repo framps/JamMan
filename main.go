@@ -17,14 +17,20 @@ func main() {
 	}
 
 	fileTableFilename, _ := filepath.Abs(os.Args[1])
-	dumpFilename, _ := filepath.Abs(os.Args[2])
+	transactionFilename, _ := filepath.Abs(os.Args[2])
 
-	fmt.Printf("Processing %s and %s\n", fileTableFilename, dumpFilename)
+	fmt.Printf("Processing %s and %s\n", fileTableFilename, transactionFilename)
 
 	fileTable, err := etfs.ParseFiletable(fileTableFilename)
 	tools.HandleError(err)
 
 	for fid, entry := range fileTable {
 		fmt.Printf("Fid: %04d - %s\n", fid, entry)
+	}
+
+	transactionTable, err := etfs.ParseTransactions(transactionFilename)
+
+	for i, entry := range transactionTable {
+		fmt.Printf("#: %08d - %s\n", i, entry)
 	}
 }
