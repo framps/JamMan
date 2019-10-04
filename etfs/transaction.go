@@ -127,10 +127,11 @@ readLoop:
 		if err != nil {
 			return nil, err
 		}
+		//fmt.Printf("# %06d - Offset: %08x - Trans: %s\n", cnt, offset, cluster.Trans)
 
 		if cluster.Trans.Fid != UNUSED_FID {
 			transCluster := Cluster{offset, cluster.Trans}
-			//fmt.Printf("# %06d - Offset: %08x - Trans: %s\n", cnt, offset, cluster.Trans)
+			fmt.Printf("# %06d - Offset: %08x - Trans: %s\n", cnt, offset, cluster.Trans)
 			transTable = append(transTable, transCluster)
 		}
 		cnt++
@@ -163,7 +164,7 @@ func ProcessTransactions(fileName string, transTable Transtable) (Etfs_transacti
 	for i := range transTable {
 		//fmt.Printf("Offset: %08x Trans: %s\n", transTable[i].Offset, transTable[i].Trans)
 
-		if transTable[i].Trans.Fid == 173 {
+		if transTable[i].Trans.Fid == 1 { //}&& transTable[i].Trans.Sequence != 6828 {
 			fmt.Printf("READ Offset: %08x Trans: %s\n", transTable[i].Offset, transTable[i].Trans)
 			l, err := f.Seek((int64)(transTable[i].Offset), 0)
 			if err != nil {
@@ -190,7 +191,7 @@ func ProcessTransactions(fileName string, transTable Transtable) (Etfs_transacti
 
 	//fmt.Println(transactionFile.Data)
 
-	wf, err := os.Create("1.wav")
+	wf, err := os.Create("1.ft")
 	tools.HandleError(err)
 	defer wf.Close()
 
