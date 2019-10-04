@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"sort"
-	"strconv"
 
 	"github.com/framps/JamMan/tools"
 )
@@ -60,6 +59,10 @@ type Etfs_cluster struct {
 type Cluster struct {
 	Offset uint32
 	Trans  Etfs_trans
+}
+
+func (e Cluster) String() string {
+	return fmt.Sprintf("Offset:%08x - Trans: %s", e.Offset, e.Trans)
 }
 
 type Transtable []Cluster
@@ -127,12 +130,13 @@ readLoop:
 		if err != nil {
 			return nil, err
 		}
-		//fmt.Printf("# %06d - Offset: %08x - Trans: %s\n", cnt, offset, cluster.Trans)
 
 		if cluster.Trans.Fid != UNUSED_FID {
 			transCluster := Cluster{offset, cluster.Trans}
-			fmt.Printf("# %06d - Offset: %08x - Trans: %s\n", cnt, offset, cluster.Trans)
+			fmt.Printf("+++ %06d - Offset: %08x - Trans: %s\n", cnt, offset, cluster.Trans)
 			transTable = append(transTable, transCluster)
+		} else {
+			fmt.Printf("--- %06d - Offset: %08x - Trans: %s\n", cnt, offset, cluster.Trans)
 		}
 		cnt++
 		offset += CLUSTER_SIZE
@@ -142,6 +146,7 @@ readLoop:
 
 	fmt.Printf("Sorting transactions...\n")
 	sort.Sort(transTable)
+	fmt.Printf("Sorted transactions\n")
 
 	return transTable, nil
 }
@@ -162,9 +167,9 @@ func ProcessTransactions(fileName string, transTable Transtable) (Etfs_transacti
 	transactionFile := NewEtfs_transaction_file()
 
 	for i := range transTable {
-		//fmt.Printf("Offset: %08x Trans: %s\n", transTable[i].Offset, transTable[i].Trans)
+		fmt.Printf("Offset: %08x Trans: %s\n", transTable[i].Offset, transTable[i].Trans)
 
-		if transTable[i].Trans.Fid == 1 { //}&& transTable[i].Trans.Sequence != 6828 {
+		if transTable[i].Trans.Fid == 178 { //}&& transTable[i].Trans.Sequence != 6828 {
 			fmt.Printf("READ Offset: %08x Trans: %s\n", transTable[i].Offset, transTable[i].Trans)
 			l, err := f.Seek((int64)(transTable[i].Offset), 0)
 			if err != nil {
@@ -184,29 +189,33 @@ func ProcessTransactions(fileName string, transTable Transtable) (Etfs_transacti
 			if err != nil {
 				return nil, err
 			}
-			fmt.Printf("Updating cluster %d\n", c.Trans.Cluster)
 			transactionFile.Data[(int)(c.Trans.Cluster)] = c.Data
 		}
 	}
 
 	//fmt.Println(transactionFile.Data)
 
-	wf, err := os.Create("1.ft")
+	wf, err := os.Create("1.wav")
 	tools.HandleError(err)
 	defer wf.Close()
 
-	keys := make([]string, 0, len(transactionFile.Data))
+	keys := make([]int, 0, len(transactionFile.Data))
 	for k := range transactionFile.Data {
-		keys = append(keys, fmt.Sprintf("%d", k))
+		keys = append(keys, k)
 	}
-	sort.Strings(keys)
+
+	sort.Slice(keys, func(i, j int) bool {
+		return keys[i] < keys[j]
+	})
 
 	for _, k := range keys {
-		i, _ := strconv.Atoi(k)
 		//fmt.Println(k, transactionFile.Data[i])
-		b := transactionFile.Data[i]
+		b := transactionFile.Data[k]
+		//fmt.Printf("Writing cluster %d - %#v\n", k, b[0:96])
 		wf.Write(b[:])
 	}
+
+	fmt.Printf("Processed transactions %s\n", fileName)
 
 	return Etfs_transaction_file_table{transactionFile}, nil
 }
