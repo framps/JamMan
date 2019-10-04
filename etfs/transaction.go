@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
+
+	"github.com/framps/JamMan/tools"
 )
 
 //######################################################################################################################
@@ -47,57 +50,61 @@ func (e Etfs_trans) String() string {
 	return fmt.Sprintf("Fid:%08d - Cluster:%08x - NClusters:%08d - Tacode:%d - Dacode:%d - Sequence:%08d", e.Fid, e.Cluster, e.Nclusters, e.Tacode, e.Dacode, e.Sequence)
 }
 
+type Etfs_data [DATA_SIZE]byte
+
 type Etfs_cluster struct {
+	Data  [DATA_SIZE]byte
+	Trans Etfs_trans
+}
+
+type Cluster struct {
 	Offset uint32
 	Trans  Etfs_trans
 }
 
-type Etfs_transtable []Etfs_cluster
+type Transtable []Cluster
 
-func (s Etfs_transtable) Len() int {
+func (s Transtable) Len() int {
 	return len(s)
 }
 
-func (s Etfs_transtable) Swap(i, j int) {
+func (s Transtable) Swap(i, j int) {
 	s[i], s[j] = s[j], s[i]
 }
 
-func (s Etfs_transtable) Less(i, j int) bool {
+func (s Transtable) Less(i, j int) bool {
 	return s[i].Trans.Sequence < s[j].Trans.Sequence
 }
 
-type Etfs_data struct {
-	Binary [DATA_SIZE]byte
-}
-
-type Etfs struct {
-	Data  Etfs_data
+type Etfs_transaction_file struct {
+	//Data  map[int]Etfs_data
+	Data  map[int][DATA_SIZE]byte
 	Trans Etfs_trans
 }
 
-func (e Etfs) String() string {
+func NewEtfs_transaction_file() Etfs_transaction_file {
+	var tf Etfs_transaction_file
+	tf.Data = make(map[int][DATA_SIZE]byte)
+	return tf
+}
+
+func (e Etfs_transaction_file) String() string {
 	return fmt.Sprintf("%s", e.Trans)
 }
 
-func HandleError(err error) {
-	if err != nil {
-		fmt.Printf("error %s\n", err.Error())
-		os.Exit(42)
-	}
-}
+type Etfs_transaction_file_table []Etfs_transaction_file
 
 // ParseFiletable -
-func ParseTransactions(fileName string) (Etfs_transtable, error) {
+func ParseTransactions(fileName string) (Transtable, error) {
 
-	fmt.Printf("Processing transactions %s\n", fileName)
+	fmt.Printf("Parsing transactions %s\n", fileName)
 
 	f, err := os.Open(fileName)
 	if err != nil {
 		return nil, err
 	}
 
-	var transTable Etfs_transtable
-	transTable = make(Etfs_transtable, 0, 50000)
+	transTable := make(Transtable, 0, 50000)
 
 	bc := make([]byte, DATA_SIZE+TRANS_SIZE)
 
@@ -114,7 +121,7 @@ readLoop:
 			return nil, err
 		}
 
-		var cluster Etfs
+		var cluster Etfs_cluster
 		b := bytes.NewBuffer(bc)
 		err = binary.Read(b, binary.LittleEndian, &cluster)
 		if err != nil {
@@ -122,8 +129,8 @@ readLoop:
 		}
 
 		if cluster.Trans.Fid != UNUSED_FID {
-			transCluster := Etfs_cluster{offset, cluster.Trans}
-			fmt.Printf("# %06d - Offset: %08x - Trans: %s\n", cnt, offset, cluster.Trans)
+			transCluster := Cluster{offset, cluster.Trans}
+			//fmt.Printf("# %06d - Offset: %08x - Trans: %s\n", cnt, offset, cluster.Trans)
 			transTable = append(transTable, transCluster)
 		}
 		cnt++
@@ -132,17 +139,32 @@ readLoop:
 
 	fmt.Printf("Transactions found: %d\n", cnt)
 
-	d := make([]Etfs_data, 0, 10*2048)
-
 	fmt.Printf("Sorting transactions...\n")
 	sort.Sort(transTable)
 
+	return transTable, nil
+}
+
+func ProcessTransactions(fileName string, transTable Transtable) (Etfs_transaction_file_table, error) {
+
+	fmt.Printf("Processing transactions %s\n", fileName)
+
+	f, err := os.Open(fileName)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	bc := make([]byte, DATA_SIZE+TRANS_SIZE)
+	var c Etfs_cluster
+
+	transactionFile := NewEtfs_transaction_file()
+
 	for i := range transTable {
-		fmt.Printf("Offset: %08x Trans: %s\n", transTable[i].Offset, transTable[i].Trans)
+		//fmt.Printf("Offset: %08x Trans: %s\n", transTable[i].Offset, transTable[i].Trans)
 
-		if transTable[i].Trans.Fid == 1 && transTable[i].Trans.Sequence == 0 {
-
-			fmt.Printf("Offset: %08x Trans: %s\n", transTable[i].Offset, transTable[i].Trans)
+		if transTable[i].Trans.Fid == 173 {
+			fmt.Printf("READ Offset: %08x Trans: %s\n", transTable[i].Offset, transTable[i].Trans)
 			l, err := f.Seek((int64)(transTable[i].Offset), 0)
 			if err != nil {
 				return nil, err
@@ -156,17 +178,34 @@ readLoop:
 				return nil, err
 			}
 
-			var cluster Etfs
 			b := bytes.NewBuffer(bc)
-			err = binary.Read(b, binary.LittleEndian, &cluster)
+			err = binary.Read(b, binary.LittleEndian, &c)
 			if err != nil {
 				return nil, err
 			}
-
-			d = append(d, cluster.Data)
+			fmt.Printf("Updating cluster %d\n", c.Trans.Cluster)
+			transactionFile.Data[(int)(c.Trans.Cluster)] = c.Data
 		}
-
 	}
 
-	return transTable, nil
+	//fmt.Println(transactionFile.Data)
+
+	wf, err := os.Create("1.wav")
+	tools.HandleError(err)
+	defer wf.Close()
+
+	keys := make([]string, 0, len(transactionFile.Data))
+	for k := range transactionFile.Data {
+		keys = append(keys, fmt.Sprintf("%d", k))
+	}
+	sort.Strings(keys)
+
+	for _, k := range keys {
+		i, _ := strconv.Atoi(k)
+		//fmt.Println(k, transactionFile.Data[i])
+		b := transactionFile.Data[i]
+		wf.Write(b[:])
+	}
+
+	return Etfs_transaction_file_table{transactionFile}, nil
 }

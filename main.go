@@ -29,8 +29,19 @@ func main() {
 	}
 
 	transactionTable, err := etfs.ParseTransactions(transactionFilename)
+	tools.HandleError(err)
+	/*
+		for i, entry := range transactionTable {
+			fmt.Printf("#: %08x - %s\n", i, entry)
+		}
+	*/
+	//etfs_transactionFiletable, err := etfs.ProcessTransactions(transactionFilename, transactionTable)
+	_, err = etfs.ProcessTransactions(transactionFilename, transactionTable)
+	tools.HandleError(err)
 
-	for i, entry := range transactionTable {
-		fmt.Printf("#: %08d - %s\n", i, entry)
-	}
+	/*
+		for i, entry := range etfs_transactionFiletable {
+			fmt.Printf("#: %08x - %s\n", i, entry)
+		}
+	*/
 }
