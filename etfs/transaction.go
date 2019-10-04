@@ -85,9 +85,10 @@ type Etfs_transaction_file struct {
 	Trans Etfs_trans
 }
 
-func NewEtfs_transaction_file() Etfs_transaction_file {
+func NewEtfs_transaction_file(trans Etfs_trans) Etfs_transaction_file {
 	var tf Etfs_transaction_file
 	tf.Data = make(map[int][DATA_SIZE]byte)
+	tf.Trans = trans
 	return tf
 }
 
@@ -133,10 +134,10 @@ readLoop:
 
 		if cluster.Trans.Fid != UNUSED_FID {
 			transCluster := Cluster{offset, cluster.Trans}
-			fmt.Printf("+++ %06d - Offset: %08x - Trans: %s\n", cnt, offset, cluster.Trans)
+			//fmt.Printf("+++ %06d - Offset: %08x - Trans: %s\n", cnt, offset, cluster.Trans)
 			transTable = append(transTable, transCluster)
 		} else {
-			fmt.Printf("--- %06d - Offset: %08x - Trans: %s\n", cnt, offset, cluster.Trans)
+			//fmt.Printf("--- %06d - Offset: %08x - Trans: %s\n", cnt, offset, cluster.Trans)
 		}
 		cnt++
 		offset += CLUSTER_SIZE
@@ -151,7 +152,7 @@ readLoop:
 	return transTable, nil
 }
 
-func ProcessTransactions(fileName string, transTable Transtable) (Etfs_transaction_file_table, error) {
+func ProcessTransactions(fileName string, transTable Transtable) (map[int]Etfs_transaction_file, error) {
 
 	fmt.Printf("Processing transactions %s\n", fileName)
 
@@ -164,58 +165,75 @@ func ProcessTransactions(fileName string, transTable Transtable) (Etfs_transacti
 	bc := make([]byte, DATA_SIZE+TRANS_SIZE)
 	var c Etfs_cluster
 
-	transactionFile := NewEtfs_transaction_file()
+	transactionFileTable := make(map[int]Etfs_transaction_file)
 
 	for i := range transTable {
 		fmt.Printf("Offset: %08x Trans: %s\n", transTable[i].Offset, transTable[i].Trans)
 
-		if transTable[i].Trans.Fid == 178 { //}&& transTable[i].Trans.Sequence != 6828 {
-			fmt.Printf("READ Offset: %08x Trans: %s\n", transTable[i].Offset, transTable[i].Trans)
-			l, err := f.Seek((int64)(transTable[i].Offset), 0)
-			if err != nil {
-				return nil, err
-			}
-			if l != (int64)(transTable[i].Offset) {
-				return nil, fmt.Errorf("Invalid offset. Expected %08x and git %08x", transTable[i].Offset, l)
-			}
-
-			_, err = f.Read(bc)
-			if err != nil {
-				return nil, err
-			}
-
-			b := bytes.NewBuffer(bc)
-			err = binary.Read(b, binary.LittleEndian, &c)
-			if err != nil {
-				return nil, err
-			}
-			transactionFile.Data[(int)(c.Trans.Cluster)] = c.Data
+		fid := (int)(transTable[i].Trans.Fid)
+		if _, ok := transactionFileTable[fid]; !ok {
+			transactionFileTable[fid] = NewEtfs_transaction_file(transTable[i].Trans)
 		}
+		fmt.Printf("READ Offset: %08x Trans: %s\n", transTable[i].Offset, transTable[i].Trans)
+		l, err := f.Seek((int64)(transTable[i].Offset), 0)
+		if err != nil {
+			return nil, err
+		}
+		if l != (int64)(transTable[i].Offset) {
+			return nil, fmt.Errorf("Invalid offset. Expected %08x and git %08x", transTable[i].Offset, l)
+		}
+
+		_, err = f.Read(bc)
+		if err != nil {
+			return nil, err
+		}
+
+		b := bytes.NewBuffer(bc)
+		err = binary.Read(b, binary.LittleEndian, &c)
+		if err != nil {
+			return nil, err
+		}
+		(transactionFileTable[fid]).Data[(int)(c.Trans.Cluster)] = c.Data
 	}
 
 	//fmt.Println(transactionFile.Data)
 
-	wf, err := os.Create("1.wav")
-	tools.HandleError(err)
-	defer wf.Close()
-
-	keys := make([]int, 0, len(transactionFile.Data))
-	for k := range transactionFile.Data {
-		keys = append(keys, k)
-	}
-
-	sort.Slice(keys, func(i, j int) bool {
-		return keys[i] < keys[j]
-	})
-
-	for _, k := range keys {
-		//fmt.Println(k, transactionFile.Data[i])
-		b := transactionFile.Data[k]
-		//fmt.Printf("Writing cluster %d - %#v\n", k, b[0:96])
-		wf.Write(b[:])
-	}
-
 	fmt.Printf("Processed transactions %s\n", fileName)
 
-	return Etfs_transaction_file_table{transactionFile}, nil
+	return transactionFileTable, nil
+}
+
+func ExtractFiles(fileTable []Etfs_ftable_file, transactionFileTable map[int]Etfs_transaction_file) error {
+
+	fmt.Printf("Extracting files\n")
+
+	var cnt int
+	for i := range transactionFileTable {
+
+		transactionFile := transactionFileTable[i]
+		filename := fileTable[transactionFile.Trans.Fid].Filename()
+		fn := fmt.Sprintf("%d_%s", cnt, filename)
+		cnt++
+		fmt.Printf("Recovering %s\n", fn)
+		wf, err := os.Create(fn + ".rcvrd")
+		tools.HandleError(err)
+		defer wf.Close()
+
+		keys := make([]int, 0, len(transactionFile.Data))
+		for k := range transactionFile.Data {
+			keys = append(keys, k)
+		}
+
+		sort.Slice(keys, func(i, j int) bool {
+			return keys[i] < keys[j]
+		})
+
+		for _, k := range keys {
+			//fmt.Println(k, transactionFile.Data[i])
+			b := transactionFile.Data[k]
+			//fmt.Printf("Writing cluster %d - %#v\n", k, b[0:96])
+			wf.Write(b[:])
+		}
+	}
+	return nil
 }
