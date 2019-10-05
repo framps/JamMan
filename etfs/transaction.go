@@ -12,7 +12,7 @@ import (
 
 //######################################################################################################################
 //
-//    Extract lost JamMan Stereo WAV files from NAND dump
+//    Extract JamMan Stereo WAV files from NAND dump
 //
 //    Copyright (C) 2019 framp at linux-tips-and-tricks dot de
 //
@@ -99,7 +99,7 @@ func (e Transaction_file) String() string {
 
 type Transaction_file_table []Transaction_file
 
-// ParseFiletable -
+// ParseFiletable - read all transaction sections from etfs dump file and sort them in transaction sequence
 func ParseTransactions(fileName string) (Transtable, error) {
 
 	fmt.Printf("--- Parsing transactions %s\n", fileName)
@@ -157,6 +157,7 @@ readLoop:
 	return transTable, nil
 }
 
+// ProcessTransactions - read cluster data in transaction sequence for all files and renew file clusters if updated in a newer transaction
 func ProcessTransactions(fileName string, transTable Transtable) (map[int]Transaction_file, error) {
 
 	fmt.Printf("--- Processing transactions %s\n", fileName)
@@ -208,6 +209,7 @@ func ProcessTransactions(fileName string, transTable Transtable) (map[int]Transa
 	return transactionFileTable, nil
 }
 
+// ExtractFiles - recover all files from their clusters, filename will be <fid>_<filename>.rcvrd
 func ExtractFiles(fileTable []Etfs_ftable_file, transactionFileTable map[int]Transaction_file) error {
 
 	fmt.Printf("--- Extracting files\n")
@@ -225,6 +227,7 @@ func ExtractFiles(fileTable []Etfs_ftable_file, transactionFileTable map[int]Tra
 		tools.HandleError(err)
 		defer wf.Close()
 
+		// sort clusters in offset sequence
 		keys := make([]int, 0, len(transactionFile.Data))
 		for k := range transactionFile.Data {
 			keys = append(keys, k)
@@ -234,12 +237,12 @@ func ExtractFiles(fileTable []Etfs_ftable_file, transactionFileTable map[int]Tra
 			return keys[i] < keys[j]
 		})
 
+		// write all clusters now
 		for i, k := range keys {
 			b := transactionFile.Data[k]
-			//fmt.Printf("Writing cluster %d - %#v\n", k, b[0:96])
 			if i < len(keys) {
 				wf.Write(b[:])
-			} else {
+			} else { // last cluster should be truncated to create a file of file size
 				rest := (int)(fileTable[fid].Size) % DATA_SIZE
 				wf.Write(b[:rest])
 			}

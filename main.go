@@ -11,7 +11,9 @@ import (
 
 //######################################################################################################################
 //
-//    Extract lost JamMan Stereo WAV files from NAND dump
+//    Extract JamMan Stereo WAV files from NAND dump
+//
+//    No elegant and fast code because a lot of trial and error coding happened but finally it recovers all files
 //
 //    Copyright (C) 2019 framp at linux-tips-and-tricks dot de
 //
