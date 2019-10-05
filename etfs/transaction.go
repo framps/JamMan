@@ -18,7 +18,9 @@ import (
 //
 //#######################################################################################################################
 
-// C struct -> https://github.com/ubyyj/qnx660/blob/bac16ebb4f22ee2ed53f9a058ae68902333e9713/target/qnx6/usr/include/fs/etfs.h
+// etfs overview -> http://qnx.symmetry.com.au/resources/whitepapers/qnx_flash_memory_for_embedded_paper_RIM_MC411.65.pdf
+// etfs C struct -> https://github.com/ubyyj/qnx660/blob/bac16ebb4f22ee2ed53f9a058ae68902333e9713/target/qnx6/usr/include/fs/etfs.h
+// etfs creation C code -> https://github.com/vocho/openqnx/blob/master/trunk/utils/m/mkxfs/mkxfs/mk_et_fsys.c
 
 const DATA_SIZE = 0x800
 const TRANS_SIZE = 16
@@ -79,29 +81,28 @@ func (s Transtable) Less(i, j int) bool {
 	return s[i].Trans.Sequence < s[j].Trans.Sequence
 }
 
-type Etfs_transaction_file struct {
-	//Data  map[int]Etfs_data
-	Data  map[int][DATA_SIZE]byte
+type Transaction_file struct {
+	Data  map[int]Etfs_data
 	Trans Etfs_trans
 }
 
-func NewEtfs_transaction_file(trans Etfs_trans) Etfs_transaction_file {
-	var tf Etfs_transaction_file
-	tf.Data = make(map[int][DATA_SIZE]byte)
+func NewTransaction_file(trans Etfs_trans) Transaction_file {
+	var tf Transaction_file
+	tf.Data = make(map[int]Etfs_data)
 	tf.Trans = trans
 	return tf
 }
 
-func (e Etfs_transaction_file) String() string {
+func (e Transaction_file) String() string {
 	return fmt.Sprintf("%s", e.Trans)
 }
 
-type Etfs_transaction_file_table []Etfs_transaction_file
+type Transaction_file_table []Transaction_file
 
 // ParseFiletable -
 func ParseTransactions(fileName string) (Transtable, error) {
 
-	fmt.Printf("Parsing transactions %s\n", fileName)
+	fmt.Printf("--- Parsing transactions %s\n", fileName)
 
 	f, err := os.Open(fileName)
 	if err != nil {
@@ -140,7 +141,7 @@ readLoop:
 			transTable = append(transTable, transCluster)
 		} else {
 			invalidTransactions++
-			fmt.Printf("--- %06d - Offset: %08x - Trans: %s\n", cnt, offset, cluster.Trans)
+			//fmt.Printf("--- %06d - Offset: %08x - Trans: %s\n", cnt, offset, cluster.Trans)
 		}
 		cnt++
 		offset += CLUSTER_SIZE
@@ -150,16 +151,15 @@ readLoop:
 	fmt.Printf("Valid transactions: %d\n", validTransactions)
 	fmt.Printf("Invalid transactions: %d\n", invalidTransactions)
 
-	fmt.Printf("Sorting transactions...\n")
+	fmt.Printf("--- Sorting transactions...\n")
 	sort.Sort(transTable)
-	fmt.Printf("Sorted transactions\n")
 
 	return transTable, nil
 }
 
-func ProcessTransactions(fileName string, transTable Transtable) (map[int]Etfs_transaction_file, error) {
+func ProcessTransactions(fileName string, transTable Transtable) (map[int]Transaction_file, error) {
 
-	fmt.Printf("Processing transactions %s\n", fileName)
+	fmt.Printf("--- Processing transactions %s\n", fileName)
 
 	f, err := os.Open(fileName)
 	if err != nil {
@@ -170,14 +170,14 @@ func ProcessTransactions(fileName string, transTable Transtable) (map[int]Etfs_t
 	bc := make([]byte, DATA_SIZE+TRANS_SIZE)
 	var c Etfs_cluster
 
-	transactionFileTable := make(map[int]Etfs_transaction_file)
+	transactionFileTable := make(map[int]Transaction_file)
 
 	for i := range transTable {
 		//fmt.Printf("Offset: %08x Trans: %s\n", transTable[i].Offset, transTable[i].Trans)
 
 		fid := (int)(transTable[i].Trans.Fid)
 		if _, ok := transactionFileTable[fid]; !ok {
-			transactionFileTable[fid] = NewEtfs_transaction_file(transTable[i].Trans)
+			transactionFileTable[fid] = NewTransaction_file(transTable[i].Trans)
 		}
 		//fmt.Printf("READ Offset: %08x Trans: %s\n", transTable[i].Offset, transTable[i].Trans)
 		l, err := f.Seek((int64)(transTable[i].Offset), 0)
@@ -208,9 +208,9 @@ func ProcessTransactions(fileName string, transTable Transtable) (map[int]Etfs_t
 	return transactionFileTable, nil
 }
 
-func ExtractFiles(fileTable []Etfs_ftable_file, transactionFileTable map[int]Etfs_transaction_file) error {
+func ExtractFiles(fileTable []Etfs_ftable_file, transactionFileTable map[int]Transaction_file) error {
 
-	fmt.Printf("Extracting files\n")
+	fmt.Printf("--- Extracting files\n")
 
 	var cnt int
 	for i := range transactionFileTable {
@@ -244,6 +244,7 @@ func ExtractFiles(fileTable []Etfs_ftable_file, transactionFileTable map[int]Etf
 				wf.Write(b[:rest])
 			}
 		}
+		cnt++
 	}
 	fmt.Printf("Recovered files: %d\n", cnt)
 

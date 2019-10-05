@@ -7,6 +7,18 @@ import (
 	"io/ioutil"
 )
 
+//######################################################################################################################
+//
+//    Extract lost JamMan Stereo WAV files from NAND dump
+//
+//    Copyright (C) 2019 framp at linux-tips-and-tricks dot de
+//
+//#######################################################################################################################
+
+// etfs overview -> http://qnx.symmetry.com.au/resources/whitepapers/qnx_flash_memory_for_embedded_paper_RIM_MC411.65.pdf
+// etfs C struct -> https://github.com/ubyyj/qnx660/blob/bac16ebb4f22ee2ed53f9a058ae68902333e9713/target/qnx6/usr/include/fs/etfs.h
+// etfs creation C code -> https://github.com/vocho/openqnx/blob/master/trunk/utils/m/mkxfs/mkxfs/mk_et_fsys.c
+
 const ETFS_FNAME_SHORT_LEN = 32
 const FID_DELETED = -1
 const FID_END = -1 // pfid for last dummy entry in filetable
@@ -51,7 +63,10 @@ func (e Etfs_ftable_file) Status() string {
 	return status
 }
 
+// ParseFiletable - parse .filetable
 func ParseFiletable(fileName string) ([]Etfs_ftable_file, error) {
+
+	fmt.Printf("--- Parsing filetable %s\n", fileName)
 
 	filetableContents, err := ioutil.ReadFile(fileName)
 	if err != nil {
