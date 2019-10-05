@@ -1,4 +1,4 @@
-## Extract JamMan Stereo WAV files and all other files from NAND dump
+## Extract JamMan Stereo WAV files and all other files from and etfs NAND dump
 
 No elegant and fast code because a lot of trial and error coding happened but finally it recovers all files
 
