@@ -75,7 +75,7 @@ func ParseFiletable(fileName string) ([]Etfs_ftable_file, error) {
 			break
 		}
 
-		//fmt.Printf("Fid: %04d - Offset: %08x - %s\n", cnt, offset, entry)
+		fmt.Printf("Fid: %04d - Offset: %08x - %s\n", cnt, offset, entry)
 		filetable = append(filetable, entry)
 		cnt++
 		if entry.Efid == FID_DELETED {

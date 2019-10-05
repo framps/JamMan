@@ -23,11 +23,11 @@ func main() {
 
 	fileTable, err := etfs.ParseFiletable(fileTableFilename)
 	tools.HandleError(err)
-
-	for fid, entry := range fileTable {
-		fmt.Printf("Fid: %04d - %s\n", fid, entry)
-	}
-
+	/*
+		for fid, entry := range fileTable {
+			fmt.Printf("Fid: %04d - %s\n", fid, entry)
+		}
+	*/
 	transactionTable, err := etfs.ParseTransactions(transactionFilename)
 	tools.HandleError(err)
 	/*

@@ -114,6 +114,7 @@ func ParseTransactions(fileName string) (Transtable, error) {
 
 	var cnt int
 	var offset uint32
+	var validTransactions, invalidTransactions int
 
 readLoop:
 	for {
@@ -133,17 +134,21 @@ readLoop:
 		}
 
 		if cluster.Trans.Fid != UNUSED_FID {
+			validTransactions++
 			transCluster := Cluster{offset, cluster.Trans}
 			//fmt.Printf("+++ %06d - Offset: %08x - Trans: %s\n", cnt, offset, cluster.Trans)
 			transTable = append(transTable, transCluster)
 		} else {
-			//fmt.Printf("--- %06d - Offset: %08x - Trans: %s\n", cnt, offset, cluster.Trans)
+			invalidTransactions++
+			fmt.Printf("--- %06d - Offset: %08x - Trans: %s\n", cnt, offset, cluster.Trans)
 		}
 		cnt++
 		offset += CLUSTER_SIZE
 	}
 
 	fmt.Printf("Transactions found: %d\n", cnt)
+	fmt.Printf("Valid transactions: %d\n", validTransactions)
+	fmt.Printf("Invalid transactions: %d\n", invalidTransactions)
 
 	fmt.Printf("Sorting transactions...\n")
 	sort.Sort(transTable)
@@ -168,13 +173,13 @@ func ProcessTransactions(fileName string, transTable Transtable) (map[int]Etfs_t
 	transactionFileTable := make(map[int]Etfs_transaction_file)
 
 	for i := range transTable {
-		fmt.Printf("Offset: %08x Trans: %s\n", transTable[i].Offset, transTable[i].Trans)
+		//fmt.Printf("Offset: %08x Trans: %s\n", transTable[i].Offset, transTable[i].Trans)
 
 		fid := (int)(transTable[i].Trans.Fid)
 		if _, ok := transactionFileTable[fid]; !ok {
 			transactionFileTable[fid] = NewEtfs_transaction_file(transTable[i].Trans)
 		}
-		fmt.Printf("READ Offset: %08x Trans: %s\n", transTable[i].Offset, transTable[i].Trans)
+		//fmt.Printf("READ Offset: %08x Trans: %s\n", transTable[i].Offset, transTable[i].Trans)
 		l, err := f.Seek((int64)(transTable[i].Offset), 0)
 		if err != nil {
 			return nil, err
@@ -198,7 +203,7 @@ func ProcessTransactions(fileName string, transTable Transtable) (map[int]Etfs_t
 
 	//fmt.Println(transactionFile.Data)
 
-	fmt.Printf("Processed transactions %s\n", fileName)
+	fmt.Printf("Visited transactions: %d\n", len(transTable))
 
 	return transactionFileTable, nil
 }
@@ -211,10 +216,11 @@ func ExtractFiles(fileTable []Etfs_ftable_file, transactionFileTable map[int]Etf
 	for i := range transactionFileTable {
 
 		transactionFile := transactionFileTable[i]
-		filename := fileTable[transactionFile.Trans.Fid].Filename()
-		fn := fmt.Sprintf("%d_%s", cnt, filename)
-		cnt++
-		fmt.Printf("Recovering %s\n", fn)
+		fid := transactionFile.Trans.Fid
+		filename := fileTable[fid].Filename()
+
+		fn := fmt.Sprintf("%d_%s", fid, filename)
+		//fmt.Printf("Recovering %d: %s\n", (int)(fileTable[fid].Size), fn)
 		wf, err := os.Create(fn + ".rcvrd")
 		tools.HandleError(err)
 		defer wf.Close()
@@ -228,12 +234,18 @@ func ExtractFiles(fileTable []Etfs_ftable_file, transactionFileTable map[int]Etf
 			return keys[i] < keys[j]
 		})
 
-		for _, k := range keys {
-			//fmt.Println(k, transactionFile.Data[i])
+		for i, k := range keys {
 			b := transactionFile.Data[k]
 			//fmt.Printf("Writing cluster %d - %#v\n", k, b[0:96])
-			wf.Write(b[:])
+			if i < len(keys) {
+				wf.Write(b[:])
+			} else {
+				rest := (int)(fileTable[fid].Size) % DATA_SIZE
+				wf.Write(b[:rest])
+			}
 		}
 	}
+	fmt.Printf("Recovered files: %d\n", cnt)
+
 	return nil
 }
