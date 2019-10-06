@@ -1,6 +1,8 @@
-## Extract JamMan Stereo WAV files and all other files from NAND dump
+## Recover files from an etfs raw NAND dump
 
-No elegant and fast code because a lot of trial and error coding happened but finally it recovers all files
+No elegant and fast code because a lot of trial and error coding happened but finally it recovers all files which have transactions in the dump.
+
+raw etfs data extracted with `etfsctl -d /dev/etfs2 -R /mnt/sdfs/etfs2.img`
 
 ## References
 1. [etfs overview](http://qnx.symmetry.com.au/resources/whitepapers/qnx_flash_memory_for_embedded_paper_RIM_MC411.65.pdf)
