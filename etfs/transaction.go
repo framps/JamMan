@@ -235,13 +235,20 @@ func ExtractFiles(fileTable []Etfs_ftable_file, transactionFileTable map[int]Tra
 	fmt.Printf("--- Extracting files\n")
 
 	var cnt int
+	var del int
 	for i := range transactionFileTable {
 
 		transactionFile := transactionFileTable[i]
 		fid := transactionFile.Trans.Fid
 		filename := fileTable[fid].Filename()
+		deleted := fileTable[fid].isDeleted()
 
-		fn := fmt.Sprintf("%d_%s", fid, filename)
+		st := ""
+		if deleted {
+			st = "_DEL_"
+			del++
+		}
+		fn := fmt.Sprintf("%d_%s%s", fid, st, filename)
 		//fmt.Printf("Recovering %d: %s\n", (int)(fileTable[fid].Size), fn)
 		wf, err := os.Create(fn + ".rcvrd")
 		tools.HandleError(err)
@@ -269,7 +276,9 @@ func ExtractFiles(fileTable []Etfs_ftable_file, transactionFileTable map[int]Tra
 		}
 		cnt++
 	}
-	fmt.Printf("Recovered files: %d\n", cnt)
+	fmt.Printf("Detected files: %d\n", cnt)
+	fmt.Printf("Extracted files: %d\n", cnt-del)
+	fmt.Printf("Recovered deleted files (may be incomplete): %d\n", del)
 
 	return nil
 }

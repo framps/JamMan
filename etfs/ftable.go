@@ -83,6 +83,13 @@ func (e Etfs_ftable_file) Status() string {
 	return status
 }
 
+func (e Etfs_ftable_file) isDeleted() bool {
+	if e.Efid == FID_DELETED {
+		return true
+	}
+	return false
+}
+
 // ParseFiletable - parse .filetable
 func ParseFiletable(fileName string) ([]Etfs_ftable_file, error) {
 
